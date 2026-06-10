@@ -32,7 +32,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def random_fact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["mode"] = None
     await send_image(update, context, "random")
-    waiting_message = await send_text(update, context, "🧠 ChatGPT шукає унікальний факт, зачекайте...")
+    random_welcome_text = load_message("random")
+    waiting_message = await send_text(update, context, random_welcome_text)
     prompt = load_prompt("random")
     ai_response = await chat_gpt.send_question(prompt_text=prompt, message_text="Розкажи один випадковий цікавий факт")
     await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=waiting_message.message_id)
@@ -56,7 +57,8 @@ async def gpt_interface_handler(update: Update, context: ContextTypes.DEFAULT_TY
     gpt_prompt = load_prompt("gpt")
     chat_gpt.set_prompt(gpt_prompt)
     context.user_data["mode"] = "gpt_mode"
-    await send_text(update, context, "Напишіть мені будь-яке запитання, і я надішлю його ChatGPT:")
+    gpt_welcome_text = load_message("gpt")
+    await send_text(update, context, gpt_welcome_text)
 
 async def talk_character_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["mode"] = None
@@ -68,12 +70,9 @@ async def talk_character_handler(update: Update, context: ContextTypes.DEFAULT_T
         "talk_queen": "👑 Єлизавета II",
         "talk_tolkien": "🧝‍♂️ Джон Толкін"
     }
-    await send_text_buttons(
-        update,
-        context,
-        "Виберіть видатну особистість, з якою хочете поспілкуватися через ChatGPT:",
-        character_options
-    )
+    talk_welcome_text = load_message("talk")
+    await send_text_buttons(update, context, talk_welcome_text, character_options)
+
 async def talk_character_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     query_data = update.callback_query.data
@@ -107,7 +106,8 @@ async def quiz_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "quiz_math": "📐 Математичні теорії",
         "quiz_biology": "🌿 Біологія та природа"
     }
-    await send_text_buttons(update, context, "Виберіть тему для вікторини:", quiz_options)
+    quiz_welcome_text = load_message("quiz")
+    await send_text_buttons(update, context, quiz_welcome_text, quiz_options)
 
 async def quiz_setup_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
