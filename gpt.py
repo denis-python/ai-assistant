@@ -6,11 +6,15 @@ class ChatGptService:
     client: AsyncOpenAI = None
     message_list: list = None
 
+    # def __init__(self, token):
+    #     token = "sk-proj-" + token[:3:-1] if token.startswith('gpt:') else token
+    #     self.client = AsyncOpenAI(
+    #         http_client=httpx.AsyncClient(proxy="http://18.199.183.77:49232"),
+    #         api_key=token)
+    #     self.message_list = []
+
     def __init__(self, token):
-        token = "sk-proj-" + token[:3:-1] if token.startswith('gpt:') else token
-        self.client = AsyncOpenAI(
-            http_client=httpx.AsyncClient(proxy="http://18.199.183.77:49232"),
-            api_key=token)
+        self.client = AsyncOpenAI(base_url="https://openai.javarush.com/v1", api_key=token)
         self.message_list = []
 
     async def send_message_list(self) -> str:

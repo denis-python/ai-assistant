@@ -97,6 +97,63 @@ async def talk_character_callback(update: Update, context: ContextTypes.DEFAULT_
              f"Напишіть йому будь-що, і він відповість суворо у своєму новому образі:"
     )
 
+async def quiz_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["mode"] = None
+    await send_image(update, context, "quiz")
+    if "quiz_score" not in context.user_data or context.user_data["quiz_score"] is None:
+        context.user_data["quiz_score"] = 0
+    quiz_options = {
+        "quiz_prog": "💻 Програмування (Python)",
+        "quiz_math": "📐 Математичні теорії",
+        "quiz_biology": "🌿 Біологія та природа"
+    }
+    await send_text_buttons(update, context, "Виберіть тему для вікторини:", quiz_options)
+
+async def quiz_setup_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    query_data = update.callback_query.data  # Отримуємо сигнал, наприклад "quiz_more"
+    chat_id = update.effective_chat.id
+    if query_data == "quiz_more":
+        await update.callback_query.edit_message_text(text="🧠 ChatGPT генерує нове питання...")
+        next_question = await chat_gpt.add_message("quiz_more. Задай строго ОДНЕ наступне питання. Без списків!")
+        await send_text(update, context, next_question)
+        return
+    if query_data == "quiz_end":
+        final_score = context.user_data.get("quiz_score", 0)
+        total_questions = context.user_data.get("quiz_step", 1) - 1
+        if total_questions <= 0:
+            total_questions = 1
+        success_percentage = round((final_score / total_questions) * 100, 1)
+        await update.callback_query.edit_message_text(
+            text=f"🏁 **КВІЗ ОФІЦІЙНО ЗАВЕРШЕНО!**\n\n"
+                 f"📊 **Твоя статистика дуелі з ШІ:**\n"
+                 f"✅ Правильних відповідей: `{final_score}`\n"
+                 f"📝 Всього задано питань: `{total_questions}`\n"
+                 f"🎯 Твоя точність (вінрейт): `{success_percentage}%` 🎯\n\n"
+                 f"Дякую за інтелектуальну гру, Денисе!"
+        )
+        context.user_data["quiz_score"] = 0
+        context.user_data["quiz_step"] = 1
+        await start(update, context)
+        return
+    if query_data == "quiz_change_theme":
+        await quiz_handler(update, context)
+        return
+    quiz_prompt = load_prompt("quiz")
+    chat_gpt.set_prompt(quiz_prompt)
+    context.user_data["mode"] = "quiz_mode"
+
+    themes = {
+        "quiz_prog": "Програмування на Python 💻",
+        "quiz_math": "Математичні теорії 📐",
+        "quiz_biology": "Біологія та природа 🌿"
+    }
+    chosen_theme = themes.get(query_data, "загальну тему")
+    await update.callback_query.edit_message_text(
+        text=f"🚩 Обрано тему: {chosen_theme}.\n🧠 ChatGPT готує перше питання...")
+    first_question = await chat_gpt.add_message(f"{query_data} Задай строго ОДНЕ перше питання. Не пиши список!")
+    await send_text(update, context, first_question)
+
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_text = update.message.text
@@ -112,6 +169,30 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         ai_response = await chat_gpt.add_message(user_text)
         await context.bot.delete_message(chat_id=chat_id, message_id=waiting.message_id)
         await send_text(update, context, ai_response)
+    elif current_mode == "quiz_mode":
+        waiting = await send_text(update, context, "🔄 Перевіряю відповідь та готую наступне питання...")
+        ai_response = await chat_gpt.add_message(user_text)
+        # Розумна перевірка: шукаємо схвалення, але стежимо, щоб не було заперечення "не"!
+        ai_lower = ai_response.lower()
+        if ("правильно" in ai_lower and "неправильно" not in ai_lower) or \
+                ("вірно" in ai_lower and "невірно" not in ai_lower) or \
+                ("молодець" in ai_lower):
+            context.user_data["quiz_score"] = context.user_data.get("quiz_score", 0) + 1
+        current_score = context.user_data["quiz_score"]
+        context.user_data["quiz_step"] = context.user_data.get("quiz_step", 1) + 1
+        await context.bot.delete_message(chat_id=chat_id, message_id=waiting.message_id)
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        keyboard = [
+            [InlineKeyboardButton("🚀 Наступне питання!", callback_data="quiz_more")],
+            [InlineKeyboardButton("🔄 Змінити тему", callback_data="quiz_change_theme")],
+            [InlineKeyboardButton("✅ Закінчити гру", callback_data="quiz_end")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"{ai_response}\n\n🏆 Твій поточний рахунок: {current_score} балів",
+            reply_markup=reply_markup
+        )
     else:
         await send_text(update, context,"Будь ласка, виберіть режим роботи в меню (наприклад, /random, /gpt або /talk).")
 
@@ -124,10 +205,12 @@ app.add_handler(CommandHandler('start', start))
 app.add_handler(CommandHandler('random', random_fact_handler))
 app.add_handler(CommandHandler('gpt', gpt_interface_handler))
 app.add_handler(CommandHandler('talk', talk_character_handler))
+app.add_handler(CommandHandler('quiz', quiz_handler))
 # Зареєструвати обробник колбеку можна так:
 # app.add_handler(CallbackQueryHandler(app_button, pattern='^app_.*'))
 app.add_handler(CallbackQueryHandler(random_fact_callback, pattern='^fact_.*'))
 app.add_handler(CallbackQueryHandler(talk_character_callback, pattern='^talk_.*'))
+app.add_handler(CallbackQueryHandler(quiz_setup_callback, pattern='^quiz_.*'))
 app.add_handler(CallbackQueryHandler(default_callback_handler))
 
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
