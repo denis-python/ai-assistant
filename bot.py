@@ -29,7 +29,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 'command': 'button text'
     })
 
-
 async def random_fact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["mode"] = None
     await send_image(update, context, "random")
@@ -54,22 +53,67 @@ async def random_fact_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def gpt_interface_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_image(update, context, "gpt")
-    # Встановлюємо системну інструкцію для ШІ
-    chat_gpt.set_prompt("Ти — корисний та розумний ШІ-помічник. Відповідай чітко та лаконічно.")
-    # Вмикаємо режим ехо-бота для ChatGPT
+    gpt_prompt = load_prompt("gpt")
+    chat_gpt.set_prompt(gpt_prompt)
     context.user_data["mode"] = "gpt_mode"
     await send_text(update, context, "Напишіть мені будь-яке запитання, і я надішлю його ChatGPT:")
+
+async def talk_character_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["mode"] = None
+    await send_image(update, context, "talk")
+    character_options = {
+        "talk_cobain": "🎸 Курт Кобейн",
+        "talk_hawking": "🌌 Стівен Гокінг",
+        "talk_nietzsche": "🧠 Фрідріх Ніцше",
+        "talk_queen": "👑 Єлизавета II",
+        "talk_tolkien": "🧝‍♂️ Джон Толкін"
+    }
+    await send_text_buttons(
+        update,
+        context,
+        "Виберіть видатну особистість, з якою хочете поспілкуватися через ChatGPT:",
+        character_options
+    )
+async def talk_character_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    query_data = update.callback_query.data
+
+    prompt_text = load_prompt(query_data)
+
+    chat_gpt.set_prompt(prompt_text)
+    context.user_data["mode"] = "talk_mode"
+    display_key = query_data.replace("talk_", "")
+    display_names = {
+        "cobain": "Курта Кобейна 🎸",
+        "hawking": "Стівена Гокінга 🌌",
+        "nietzsche": "Фрідріха Ніцше 🧠",
+        "queen": "Єлизавети II 👑",
+        "tolkien": "Джона Толкіна 🧝‍♂️"
+    }
+    chosen_name = display_names.get(display_key, "обраного персонажа")
+
+    await update.callback_query.edit_message_text(
+        text=f"✨ Успішно! ChatGPT перевтілився в {chosen_name}.\n"
+             f"Напишіть йому будь-що, і він відповість суворо у своєму новому образі:"
+    )
 
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_text = update.message.text
-    if context.user_data.get("mode") == "gpt_mode":
+    current_mode = context.user_data.get("mode")
+
+    if current_mode == "gpt_mode":
         waiting = await send_text(update, context, "🧠 ChatGPT думає...")
         ai_response = await chat_gpt.add_message(user_text)
         await context.bot.delete_message(chat_id=chat_id, message_id=waiting.message_id)
         await send_text(update, context, ai_response)
+    elif current_mode == "talk_mode":
+        waiting = await send_text(update, context, "🎭 Персонаж обмірковує відповідь...")
+        ai_response = await chat_gpt.add_message(user_text)
+        await context.bot.delete_message(chat_id=chat_id, message_id=waiting.message_id)
+        await send_text(update, context, ai_response)
     else:
-        await send_text(update, context, "Будь ласка, виберіть режим роботи в меню (наприклад, /random або /gpt).")
+        await send_text(update, context,"Будь ласка, виберіть режим роботи в меню (наприклад, /random, /gpt або /talk).")
 
 chat_gpt = ChatGptService(OPENAI_TOKEN)
 app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -79,9 +123,11 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler('start', start))
 app.add_handler(CommandHandler('random', random_fact_handler))
 app.add_handler(CommandHandler('gpt', gpt_interface_handler))
+app.add_handler(CommandHandler('talk', talk_character_handler))
 # Зареєструвати обробник колбеку можна так:
 # app.add_handler(CallbackQueryHandler(app_button, pattern='^app_.*'))
 app.add_handler(CallbackQueryHandler(random_fact_callback, pattern='^fact_.*'))
+app.add_handler(CallbackQueryHandler(talk_character_callback, pattern='^talk_.*'))
 app.add_handler(CallbackQueryHandler(default_callback_handler))
 
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
