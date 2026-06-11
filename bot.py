@@ -103,27 +103,13 @@ async def talk_character_handler(update: Update, context: ContextTypes.DEFAULT_T
     await send_image(update, context, "talk")
     character_options = {
         "talk_cobain": "🎸 Курт Кобейн",
-        "talk_hawking": "🌌 Стівен Гокінг",
-        "talk_nietzsche": "🧠 Фрідріх Ніцше",
         "talk_queen": "👑 Єлизавета II",
-        "talk_tolkien": "🧝‍♂️ Джон Толкін"
+        "talk_tolkien": "🧝‍♂️ Джон Толкін",
+        "talk_nietzsche": "🧠 Фрідріх Ніцше",
+        "talk_hawking": "🌌 Стівен Гокінг"
     }
     talk_welcome_text = load_message("talk")
     await send_text_buttons(update, context, talk_welcome_text, character_options)
-
-
-async def quiz_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["mode"] = None
-    await send_image(update, context, "quiz")
-    if "quiz_score" not in context.user_data or context.user_data["quiz_score"] is None:
-        context.user_data["quiz_score"] = 0
-    quiz_options = {
-        "quiz_prog": "💻 Програмування (Python)",
-        "quiz_math": "📐 Математичні теорії",
-        "quiz_biology": "🌿 Біологія та природа"
-    }
-    quiz_welcome_text = load_message("quiz")
-    await send_text_buttons(update, context, quiz_welcome_text, quiz_options)
 
 
 async def talk_character_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -137,10 +123,10 @@ async def talk_character_callback(update: Update, context: ContextTypes.DEFAULT_
     display_key = query_data.replace("talk_", "")
     display_names = {
         "cobain": "Курта Кобейна 🎸",
-        "hawking": "Стівена Гокінга 🌌",
-        "nietzsche": "Фрідріха Ніцше 🧠",
         "queen": "Єлизавети II 👑",
-        "tolkien": "Джона Толкіна 🧝‍♂️"
+        "tolkien": "Джона Толкіна 🧝‍♂️",
+        "nietzsche": "Фрідріха Ніцше 🧠",
+        "hawking": "Стівена Гокінга 🌌"
     }
     chosen_name = display_names.get(display_key, "обраного персонажа")
 
