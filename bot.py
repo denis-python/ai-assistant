@@ -24,7 +24,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🧠 Випадковий факт", callback_data="menu_random"),
              InlineKeyboardButton("🤖 Чат з ChatGPT", callback_data="menu_gpt")],
             [InlineKeyboardButton("👤 Особистості", callback_data="menu_talk"),
-             InlineKeyboardButton("❓ ШІ-Вікторина", callback_data="menu_quiz")]
+             InlineKeyboardButton("❓ ШІ-Вікторина", callback_data="menu_quiz")],
+            [InlineKeyboardButton("🌐 Перекладач", callback_data="menu_translator"),
+             InlineKeyboardButton("🎬 Кінокритик", callback_data="menu_movies")]  # 👈 ОЦЕЙ РЯДОК Є?
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await context.bot.send_message(
@@ -42,15 +44,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'random': 'Дізнатися випадковий цікавий факт 🧠',
         'gpt': 'Задати питання чату GPT 🤖',
         'talk': 'Поговорити з відомою особистістю 👤',
-        'quiz': 'Взяти участь у квізі ❓'
+        'quiz': 'Взяти участь у квізі ❓',
+        'translator': 'Переклад тексту 🌐',
+        'movies': 'Добірка кінокритика🎬'
     # Додати команду в меню можна так:
         # 'command': 'button text'
     })
 
 
 async def open_main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer()
-    await start(update, context)
+    chat_id = update.effective_chat.id
+    if update and update.callback_query:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=update.callback_query.message.message_id)
+        except:
+            pass
+    keyboard = [
+        [InlineKeyboardButton("🧠 Випадковий факт", callback_data="menu_random"),
+         InlineKeyboardButton("🤖 Чат з ChatGPT", callback_data="menu_gpt")],
+        [InlineKeyboardButton("👤 Особистості", callback_data="menu_talk"),
+         InlineKeyboardButton("❓ ШІ-Вікторина", callback_data="menu_quiz")],
+        [InlineKeyboardButton("🌐 Перекладач", callback_data="menu_translator"),
+         InlineKeyboardButton("🎬 Кінокритик", callback_data="menu_movies")]  # 👈 ДОДАЛИ НОВІ КНОПКИ!
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="🤖 **Головне ШІ-Меню Помічника** 🤖\n\nВиберіть потрібний режим роботи:",
+        reply_markup=reply_markup
+    )
 
 
 async def main_menu_navigation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -65,7 +87,10 @@ async def main_menu_navigation_callback(update: Update, context: ContextTypes.DE
         await talk_character_handler(update, context)
     elif query_data == "menu_quiz":
         await quiz_handler(update, context)
-
+    elif query_data == "menu_translator":
+        await translator_handler(update, context)
+    elif query_data == "menu_movies":
+        await movies_handler(update, context)
 
 async def random_fact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["mode"] = None
@@ -204,6 +229,55 @@ async def quiz_setup_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     first_question = await chat_gpt.add_message(f"{query_data} Задай строго ОДНЕ перше питання. Не пиши список!")
     await send_text(update, context, first_question)
 
+async def translator_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["mode"] = None
+    chat_id = update.effective_chat.id
+    await send_image(update, context, "translator")
+    keyboard = [
+        [InlineKeyboardButton("🇺🇸 Англійська", callback_data="trans_en"),
+         InlineKeyboardButton("🇩🇪 Німецька", callback_data="trans_de")],
+        [InlineKeyboardButton("🇫🇷 Французька", callback_data="trans_fr"),
+         InlineKeyboardButton("🇪🇸 Іспанська", callback_data="trans_es")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="Привіт! Я твій інтелектуальний ШІ-Перекладач. 🌐\n"
+             "Виберіть мову, на яку потрібно перекласти ваш наступний текст:",
+        reply_markup=reply_markup
+    )
+async def translator_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    query_data = update.callback_query.data
+    languages = {
+        "trans_en": "англійську 🇺🇸",
+        "trans_de": "німецьку 🇩🇪",
+        "trans_fr": "французьку 🇫🇷",
+        "trans_es": "іспанську 🇪🇸"
+    }
+    chosen_lang = languages.get(query_data, "англійську")
+    base_prompt = load_prompt("translator")
+    extended_prompt = f"{base_prompt}\nЦільова іноземна мова для цієї сесії: {chosen_lang}."
+    chat_gpt.set_prompt(extended_prompt)
+    context.user_data["mode"] = "translator_mode"
+    await update.callback_query.edit_message_text(
+        text=f"🔄 **Двосторонній автопереклад активовано!**\n\n"
+             f"Напишіть мені будь-яку фразу, і я миттєво перекладу її на {chosen_lang} або назад українською:"
+    )
+
+
+async def movies_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["mode"] = None
+    await send_image(update, context, "movies")
+    context.user_data["mode"] = "movies_mode"
+    await send_text(
+        update,
+        context,
+        "🎬 **Ласкаво запрошую до ШІ-Кінокритика!**\n\n"
+        "Напишіть мені через кому кілька ваших улюблені фільмів, серіалів, режисерів або акторів, які вам подобаються.\n\n"
+        "🧠 ChatGPT проаналізує ваш смак і створить ексклюзивну підбірку шедеврів особисто під ваш смак!"
+    )
+
 
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -246,6 +320,21 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 text=f"{ai_response}\n\n🏆 Твій поточний рахунок: {current_score} балів",
                 reply_markup=reply_markup
             )
+        elif current_mode == "translator_mode":
+            waiting = await send_text(update, context, "🔄 Перекладаю...")
+            ai_response = await chat_gpt.add_message(user_text)
+            await context.bot.delete_message(chat_id=chat_id, message_id=waiting.message_id)
+            exit_btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Закінчити переклад", callback_data="gpt_end")]])
+            await context.bot.send_message(chat_id=chat_id, text=ai_response, reply_markup=exit_btn)
+        elif current_mode == "movies_mode":
+            waiting = await send_text(update, context, "🍿 ШІ-Кінокритик сканує світову базу кінематографу...")
+            movie_prompt = load_prompt("movies")
+            ai_response = await chat_gpt.send_question(prompt_text=movie_prompt,message_text=f"Мої улюблені фільми: {user_text}")
+            await context.bot.delete_message(chat_id=chat_id, message_id=waiting.message_id)
+            exit_btn = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("✅ Закінчити підбір фільмів", callback_data="gpt_end")]])
+            await context.bot.send_message(chat_id=chat_id, text=ai_response, reply_markup=exit_btn)
+
     except Exception as error:
         print(f"🚨 Мережевий збій або помилка API: {error}")
         try:
@@ -271,6 +360,8 @@ app.add_handler(CommandHandler('random', random_fact_handler))
 app.add_handler(CommandHandler('gpt', gpt_interface_handler))
 app.add_handler(CommandHandler('talk', talk_character_handler))
 app.add_handler(CommandHandler('quiz', quiz_handler))
+app.add_handler(CommandHandler('translator', translator_handler))
+app.add_handler(CommandHandler('movies', movies_handler))
 
 # Зареєструвати обробник колбеку можна так:
 # app.add_handler(CallbackQueryHandler(app_button, pattern='^app_.*'))
@@ -279,7 +370,7 @@ app.add_handler(CallbackQueryHandler(start, pattern='^talk_end$'))
 
 app.add_handler(CallbackQueryHandler(open_main_menu_callback, pattern='^open_menu$'))
 app.add_handler(CallbackQueryHandler(main_menu_navigation_callback, pattern='^menu_.*'))
-
+app.add_handler(CallbackQueryHandler(translator_callback, pattern='^trans_.*'))
 app.add_handler(CallbackQueryHandler(random_fact_callback, pattern='^fact_.*'))
 app.add_handler(CallbackQueryHandler(talk_character_callback, pattern='^talk_.*'))
 app.add_handler(CallbackQueryHandler(quiz_setup_callback, pattern='^quiz_.*'))
