@@ -96,5 +96,18 @@ async def default_callback_handler(update: Update,
     await send_html(update, context, f'You have pressed button with {query} callback')
 
 
+async def send_text_buttons_grid(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, buttons: dict) -> Message:
+    text = text.encode('utf16', errors='surrogatepass').decode('utf16')
+    all_buttons = [InlineKeyboardButton(str(v), callback_data=str(k)) for k, v in buttons.items()]
+    keyboard = [all_buttons[i:i + 2] for i in range(0, len(all_buttons), 2)]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    return await context.bot.send_message(
+        update.effective_message.chat_id,
+        text=text, reply_markup=reply_markup,
+        message_thread_id=update.effective_message.message_thread_id
+        )
+
+
 class Dialog:
     pass
