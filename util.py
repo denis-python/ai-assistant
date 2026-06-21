@@ -3,6 +3,12 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, \
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
+import contextlib
+
+
+def sanitize_text(text: str) -> str:
+    """Очищає текст від сурогатних символів для безпечної відправки."""
+    return text.encode('utf16', errors='surrogatepass').decode('utf16')
 
 
 # конвертує об'єкт user в рядок
@@ -20,7 +26,7 @@ async def send_text(update: Update, context: ContextTypes.DEFAULT_TYPE,
         print(message)
         return await update.message.reply_text(message)
 
-    text = text.encode('utf16', errors='surrogatepass').decode('utf16')
+    text = sanitize_text(text)
     return await context.bot.send_message(chat_id=update.effective_chat.id,
                                           text=text,
                                           parse_mode=ParseMode.MARKDOWN)
@@ -29,7 +35,7 @@ async def send_text(update: Update, context: ContextTypes.DEFAULT_TYPE,
 # надсилає в чат html повідомлення
 async def send_html(update: Update, context: ContextTypes.DEFAULT_TYPE,
                     text: str) -> Message:
-    text = text.encode('utf16', errors='surrogatepass').decode('utf16')
+    text = sanitize_text(text)
     return await context.bot.send_message(chat_id=update.effective_chat.id,
                                           text=text, parse_mode=ParseMode.HTML)
 
@@ -37,7 +43,7 @@ async def send_html(update: Update, context: ContextTypes.DEFAULT_TYPE,
 # надсилає в чат текстове повідомлення, та додає до нього кнопки
 async def send_text_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE,
                             text: str, buttons: dict) -> Message:
-    text = text.encode('utf16', errors='surrogatepass').decode('utf16')
+    text = sanitize_text(text)
     keyboard = []
     for key, value in buttons.items():
         button = InlineKeyboardButton(str(value), callback_data=str(key))
@@ -97,7 +103,7 @@ async def default_callback_handler(update: Update,
 
 
 async def send_text_buttons_grid(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, buttons: dict) -> Message:
-    text = text.encode('utf16', errors='surrogatepass').decode('utf16')
+    text = sanitize_text(text)
     all_buttons = [InlineKeyboardButton(str(v), callback_data=str(k)) for k, v in buttons.items()]
     keyboard = [all_buttons[i:i + 2] for i in range(0, len(all_buttons), 2)]
 
@@ -107,6 +113,18 @@ async def send_text_buttons_grid(update: Update, context: ContextTypes.DEFAULT_T
         text=text, reply_markup=reply_markup,
         message_thread_id=update.effective_message.message_thread_id
         )
+
+@contextlib.asynccontextmanager
+async def waiting_message(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    """Асинхронний контекстний менеджер для показу та видалення повідомлення очікування."""
+    message = await send_text(update, context, text)
+    try:
+        yield message
+    finally:
+        try:
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=message.message_id)
+        except Exception:
+            pass
 
 
 class Dialog:
