@@ -18,6 +18,13 @@ load_dotenv()
 BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_TOKEN = os.getenv("OPENAI_TOKEN")
 
+
+def get_gpt_service(context: ContextTypes.DEFAULT_TYPE) -> ChatGptService:
+    if "gpt_instance" not in context.user_data:
+        context.user_data["gpt_instance"] = ChatGptService(OPENAI_TOKEN)
+    return context.user_data["gpt_instance"]
+
+
 MAIN_MENU_BUTTONS = {
     "menu_random": "🧠 Випадковий факт",
     "menu_gpt": "🤖 Чат з ChatGPT",
@@ -54,7 +61,8 @@ async def handle_ai_request(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                             callback_data: str, user_text: str):
     chat_id = update.effective_chat.id
     waiting = await send_text(update, context, waiting_text)
-    ai_response = await chat_gpt.add_message(user_text)
+    user_gpt = get_gpt_service(context)
+    ai_response = await user_gpt.add_message(user_text)
     await context.bot.delete_message(chat_id=chat_id, message_id=waiting.message_id)
     await send_text_buttons(update, context, ai_response, {callback_data: exit_btn_text})
 
@@ -122,7 +130,8 @@ async def random_fact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     waiting_msg = await send_text(update, context, welcome_text)
 
     prompt = load_prompt("random")
-    ai_response = await chat_gpt.send_question(prompt_text=prompt, message_text="Розкажи один випадковий цікавий факт")
+    user_gpt = get_gpt_service(context)
+    ai_response = await user_gpt.send_question(prompt_text=prompt, message_text="Розкажи один випадковий цікавий факт")
 
     await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=waiting_msg.message_id)
 
@@ -144,7 +153,8 @@ async def gpt_interface_handler(update: Update, context: ContextTypes.DEFAULT_TY
     if await is_user_busy(update, context):
         return
     await send_image(update, context, "gpt")
-    chat_gpt.set_prompt(load_prompt("gpt"))
+    user_gpt = get_gpt_service(context)
+    user_gpt.set_prompt(load_prompt("gpt"))
     context.user_data["mode"] = "gpt_mode"
     await send_text_buttons(update, context, load_message("gpt"), {"gpt_end": "⬅️ Назад в меню"})
 
@@ -172,7 +182,8 @@ async def talk_character_callback(update: Update, context: ContextTypes.DEFAULT_
     if query_data == "talk_end":
         return
 
-    chat_gpt.set_prompt(load_prompt(query_data))
+    user_gpt = get_gpt_service(context)
+    user_gpt.set_prompt(load_prompt(query_data))
     context.user_data["mode"] = "talk_mode"
 
     names = {
@@ -213,23 +224,28 @@ async def quiz_setup_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query_data = update.callback_query.data
 
     if query_data == "quiz_more":
-        await send_text(update,context,"🧠 ChatGPT генерує нове питання...")
-        next_q = await chat_gpt.add_message("quiz_more. Задай строго ОДНЕ наступне питання. Без списків!")
+        waiting = await send_text(update,context,"🧠 ChatGPT генерує нове питання...")
+        user_gpt = get_gpt_service(context)
+        next_q = await user_gpt.add_message("quiz_more. Задай строго ОДНЕ наступне питання. Без списків!")
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=waiting.message_id)
         await send_text(update, context, next_q)
         return
 
     if query_data == "quiz_end":
         score = context.user_data.get("quiz_score", 0)
-        total = max(context.user_data.get("quiz_step", 1) - 1, 1)
-        if score > total:
-            total = score
-        pct = round((score / total) * 100, 1)
+        total_questions = context.user_data.get("quiz_step", 1) - 1
+        if total_questions == 0:
+            total_questions = 1
+        # Захист від асинхронного зсуву лічильників (щоб точність не перевищувала 100%)
+        if score > total_questions:
+            total_questions = score
+        # Рахуємо відсоток успішності квізу
+        success_percentage = round((score / total_questions) * 100, 1)
 
         await update.callback_query.edit_message_text(
             text=f"🏁 **КВІЗ ОФІЦІЙНО ЗАВЕРШЕНО!**\n\n📊 **Статистика:**\n"
-                f"✅ Правильних: `{score}`\n📝 Всього питань: `{total}`\n"
-                f"🎯 Точність: `{pct}%` 🎯\n\nПовертаємось до головного меню..."
+                f"✅ Правильних: `{score}`\n📝 Всього питань: `{total_questions}`\n"
+                f"🎯 Точність: `{success_percentage}%` 🎯\n\nПовертаємось до головного меню..."
         )
         context.user_data.update({"quiz_score": 0, "quiz_step": 1, "mode": None})
         await asyncio.sleep(4)
@@ -241,7 +257,8 @@ async def quiz_setup_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await quiz_handler(update, context)
         return
 
-    chat_gpt.set_prompt(load_prompt("quiz"))
+    user_gpt = get_gpt_service(context)
+    user_gpt.set_prompt(load_prompt("quiz"))
     context.user_data["mode"] = "quiz_mode"
 
     themes = {
@@ -251,7 +268,8 @@ async def quiz_setup_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     }
     await send_text(update, context,
     f"🚩 Обрано тему: {themes.get(query_data, 'загальну тему')}.\n🧠 ChatGPT готує перше питання...")
-    first_q = await chat_gpt.add_message(f"{query_data} Задай строго ОДНЕ перше питання. Не пиши список!")
+    user_gpt = get_gpt_service(context)
+    first_q = await user_gpt.add_message(f"{query_data} Задай строго ОДНЕ перше питання. Не пиши список!")
     await send_text(update, context, first_q)
 
 
@@ -287,7 +305,8 @@ async def translator_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         "trans_fr": "французьку 🇫🇷", "trans_es": "іспанську 🇪🇸"
     }
     lang = languages.get(query_data, "англійську")
-    chat_gpt.set_prompt(f"{load_prompt('translator')}\nЦільова іноземна мова: {lang}.")
+    user_gpt = get_gpt_service(context)
+    user_gpt.set_prompt(f"{load_prompt('translator')}\nЦільова іноземна мова: {lang}.")
     context.user_data["mode"] = "translator_mode"
     welcome_msg = (
         f"🔄 **Двосторонній автопереклад активовано!**\n\n"
@@ -330,7 +349,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             await handle_ai_request(update, context, "🔄 Перекладаю...", "✅ Закінчити переклад", "gpt_end", user_text)
         elif current_mode == "quiz_mode":
             waiting = await send_text(update, context, "🔄 Перевіряю відповідь та готую наступне питання...")
-            ai_response = await chat_gpt.add_message(user_text)
+            user_gpt = get_gpt_service(context)
+            ai_response = await user_gpt.add_message(user_text)
             normalized = ai_response.lower()
 
             if any(word in normalized for word in ["правильно", "вірно", "молодець"]) and "не" not in normalized:
@@ -349,7 +369,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
         elif current_mode == "movies_mode":
             waiting = await send_text(update, context, "🍿 ШІ-Кінокритик сканує базу кінематографу...")
-            ai_response = await chat_gpt.send_question(prompt_text=load_prompt("movies"),
+            user_gpt = get_gpt_service(context)
+            ai_response = await user_gpt.send_question(prompt_text=load_prompt("movies"),
                                                        message_text=f"Мої улюблені фільми: {user_text}")
             await context.bot.delete_message(chat_id=chat_id, message_id=waiting.message_id)
             await send_text_buttons(update, context, ai_response, {"gpt_end": "Закінчити підбір фільмів"})
@@ -363,7 +384,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await send_text(update, context, "⚠️ **Сервери ШІ тимчасово перевантажені.**\nСпробуйте ще раз!")
 
 
-chat_gpt = ChatGptService(OPENAI_TOKEN)
+# chat_gpt = ChatGptService(OPENAI_TOKEN)
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 commands = {
