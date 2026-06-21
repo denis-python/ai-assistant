@@ -1,6 +1,6 @@
 import os
 import asyncio
-import telegram  # <-- ДОДАНО ІМПОРТ (виправляє помилку в блоці except)
+import telegram
 from dotenv import load_dotenv
 
 from functools import wraps
@@ -239,7 +239,8 @@ async def quiz_setup_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query_data = update.callback_query.data
 
     if query_data == "quiz_more":
-        question = await ask_quiz_question(update, context, "quiz_more")
+        current_theme = context.user_data.get("quiz_theme")
+        question = await ask_quiz_question(update, context, current_theme)
         await send_text(update, context, question)
         return
 
@@ -272,6 +273,7 @@ async def quiz_setup_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data.setdefault("quiz_score", 0)
     theme_name = QUIZ_THEMES.get(query_data, "загальну тему")
     await send_text(update, context, f"🚩 Обрано тему: {theme_name}.")
+    context.user_data["quiz_theme"] = query_data
     question = await ask_quiz_question(update, context, query_data)
     await send_text(update, context, question)
 
