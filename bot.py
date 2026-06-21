@@ -26,6 +26,7 @@ class BotModes:
     QUIZ = "quiz_mode"
     GPT = "gpt_mode"
     TALK = "talk_mode"
+    TRANSLATOR_SETUP = "translator_setup"  # <-- ДОДАНО для очікування назви мови від користувача
     TRANSLATOR = "translator_mode"
     MOVIES = "movies_mode"
 
@@ -283,17 +284,19 @@ async def translator_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data["mode"] = None
     await send_image(update, context, "translator")
 
+    # ДОДАНО кнопку "trans_other" в сітку
     trans_buttons = {
         "trans_en": "🇺🇸 Англійська",
         "trans_de": "🇩🇪 Німецька",
         "trans_fr": "🇫🇷 Французька",
         "trans_es": "🇪🇸 Іспанська",
+        "trans_other": "✍️ Інша мова",
         "gpt_end": " ⬅️ Назад в меню"
     }
     await send_text_buttons_grid(
         update,
         context,
-        "Привіт! Я твій інтеллектуальний ШІ-Перекладач.\nВибери мову на яку потрібно перекласти твій наступний текст.",
+        "Привіт! Я твій інтелектуальний ШІ-Перекладач.\nВибери мову, на яку потрібно перекласти твій наступний текст, або натисни 'Інша мова':",
         trans_buttons
     )
 
@@ -303,17 +306,25 @@ async def translator_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.callback_query.answer()
     query_data = update.callback_query.data
 
+    # ОБРОБКА натискання кнопки "Інша мова"
+    if query_data == "trans_other":
+        context.user_data["mode"] = BotModes.TRANSLATOR_SETUP
+        await send_text(update, context, "✍️ Напишіть назву мови, на яку ви хочете перекладати (наприклад: *Італійська*, *Польська*, *Японська*):")
+        return
+
     languages = {
         "trans_en": "англійську 🇺🇸", "trans_de": "німецьку 🇩🇪",
         "trans_fr": "французьку 🇫🇷", "trans_es": "іспанську 🇪🇸"
     }
     lang = languages.get(query_data, "англійську")
     user_gpt = get_gpt_service(context)
-    user_gpt.set_prompt(f"{load_prompt('translator')}\nЦільова іноземна мова: {lang}.")
+    full_prompt = f"{load_prompt('translator')}\nЦільова іноземна мова: {lang}."
+    user_gpt.set_prompt(full_prompt)
+    context.user_data["translator_prompt"] = full_prompt
     context.user_data["mode"] = BotModes.TRANSLATOR
     welcome_msg = (
         f"🔄 **Двосторонній автопереклад активовано!**\n\n"
-        f"Напишіть мне будь-яку фразу, і я миттєво перекладу її на {lang} або назад українською:"
+        f"Напишіть мені будь-яку фразу, і я миттєво перекладу її на {lang} або назад українською:"
     )
     await send_text_buttons(update, context, welcome_msg, {"gpt_end": "Скасувати переклад"})
 
@@ -342,13 +353,30 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     try:
-        if current_mode == BotModes.GPT:
+        if current_mode == BotModes.TRANSLATOR_SETUP:
+            user_gpt = get_gpt_service(context)
+            full_prompt = f"{load_prompt('translator')}\nЦільова іноземна мова: {user_text}."
+            user_gpt.set_prompt(full_prompt)
+            context.user_data["translator_prompt"] = full_prompt
+            context.user_data["mode"] = BotModes.TRANSLATOR
+            welcome_msg = (
+                f"🔄 **Двосторонній автопереклад активовано!**\n\n"
+                f"Напишіть мені будь-яку фразу, і я миттєво перекладу її на мову (*{user_text}*) або назад українською:"
+            )
+            await send_text_buttons(update, context, welcome_msg, {"gpt_end": "Скасувати переклад"})
+            return
+
+        elif current_mode == BotModes.GPT:
             await handle_ai_request(update, context, "🧠 ChatGPT думає...", "✅ Закінчити діалог", "gpt_end", user_text)
         elif current_mode == BotModes.TALK:
             await handle_ai_request(update, context, "🎭 Персонаж міркує...", "✅ Закінчити розмову", "talk_end",
                                     user_text)
         elif current_mode == BotModes.TRANSLATOR:
-            await handle_ai_request(update, context, "🔄 Перекладаю...", "✅ Закінчити переклад", "gpt_end", user_text)
+            async with waiting_message(update, context, "🔄 Перекладаю..."):
+                user_gpt = get_gpt_service(context)
+                current_prompt = context.user_data.get("translator_prompt", load_prompt("translator"))
+                ai_response = await user_gpt.send_question(prompt_text=current_prompt, message_text=user_text)
+            await send_text_buttons(update, context, ai_response, {"gpt_end": "✅ Закінчити переклад"})
         elif current_mode == BotModes.QUIZ:
             async with waiting_message(update, context, "🔄 Перевіряю відповідь та готую наступне питання..."):
                 user_gpt = get_gpt_service(context)
@@ -382,7 +410,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     except telegram.error.TelegramError as error:
         print(f"Помилка Telegram API: {error}")
-        await send_text(update, context, "⚠️ **Виникла擁 помилка мережі.**\nСпробуйте ще раз!")
+        await send_text(update, context, "⚠️ **Виникла помилка мережі.**\nСпробуйте ще раз!")
     except Exception as error:
         print(f"Критична помилка: {error}")
         await send_text(update, context, "🤖 **Сервери ШІ тимчасово перевантажені.**\nСпробуйте ще раз!")
